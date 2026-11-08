@@ -17,7 +17,7 @@ class convol_layer:
     def backward(self, dL_dout): 
         dL_dkernel = np.zeros(self.kernel_dims)
         dL_dimg = np.zeros(self.img_dims)
-        dL_dkernel = utils.convolve(self.img, dL_dout, 2, axes=(1, 2))
+        dL_dkernel = utils.convolve(dL_dout, self.img)
         dL_dimg = utils.convolve(dL_dout, np.rot90(self.kernel, 2, axes=(2, 3))) 
         dL_db = np.sum(dL_dout, axis=(1, 2)) 
         self.kernel -= self.learning_rate * dL_dkernel 
@@ -49,6 +49,7 @@ class activation_layer:
     def __init__(self):
         pass
     def forward(self, img):
+        self.img = img
         return utils.relu(img)
     def backward(self, dL_dout):
         return dL_dout * (self.img > 0)
@@ -69,17 +70,37 @@ class flatten_layer:
     def backward(self, dL_dout):
         return dL_dout.reshape(self.img_shape)
 class fc_layer:
-    def __init__(self, input_size: int, output_size: int, learning_rate: float):
-        self.weights = np.random.rand(output_size, input_size)
-        self.biases = np.random.rand(output_size)
+    def __init__(self, layer_sizes: tuple[int, int, int], learning_rate: float):
+        self.weights1 = np.random.rand(layer_sizes[1], layer_sizes[0])
+        self.weights2 = np.random.rand(layer_sizes[2], layer_sizes[1])
+        self.biases1 = np.random.rand(layer_sizes[1])
+        self.biases2 = np.random.rand(layer_sizes[2])
         self.learning_rate = learning_rate
     def forward(self, img):
         self.img = img
-        return np.dot(self.weights, img) + self.biases
+        self.hidden = utils.relu(np.dot(self.weights1, img) + self.biases1)
+        
+        output = utils.relu(np.dot(self.weights2, self.hidden) + self.biases2)
+        return output
     def backward(self, dL_dout):
-        dL_dweights = np.outer(dL_dout, self.img)
-        dL_dbiases = dL_dout
-        dL_dimg = np.dot(self.weights.T, dL_dout)
-        self.weights -= self.learning_rate * dL_dweights
-        self.biases -= self.learning_rate * dL_dbiases
+        dL_dweights2 = np.outer(dL_dout, self.hidden)
+        dL_dbiases2 = dL_dout
+        dL_dz = np.dot(self.weights2.T, dL_dout)
+        dL_dweights1 = np.outer(dL_dz, self.img)
+        dL_dbiases1 = dL_dz
+        dL_dimg = np.dot(self.weights1.T, dL_dz)
+        self.weights1 -= self.learning_rate * dL_dweights1
+        self.biases1 -= self.learning_rate * dL_dbiases1
+        self.weights2 -= self.learning_rate * dL_dweights2
+        self.biases2 -= self.learning_rate * dL_dbiases2
+        return dL_dimg
+class softmax_layer:
+    def __init__(self):
+        pass
+    def forward(self, img):
+        shift = img - np.max(img)
+        self.output = np.exp(shift) / np.sum(np.exp(shift))
+        return self.output
+    def backward(self, dL_dout):
+        dL_dimg = self.output * (1-self.output) * dL_dout
         return dL_dimg
